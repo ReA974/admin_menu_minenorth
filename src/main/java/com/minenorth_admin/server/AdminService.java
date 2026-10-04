@@ -50,6 +50,11 @@ public final class AdminService {
                     Result r = act.equals("staff") ? null : staff(actor, acc, m);
                     sendStaff(actor, acc, r == null ? "" : r.message(), r == null || r.ok());
                 }
+                case "user" -> {
+                    Result r = deleteUser(actor, acc, m.target());
+                    if (r.ok()) sendHome(actor, Access.of(actor), false, r.message());
+                    else sendPlayer(actor, acc, m.target(), m.b(), r.message(), false);
+                }
                 case "bank", "permis", "garage", "inv", "tp" -> {
                     Result r = playerAction(actor, acc, module, m);
                     String section = switch (module) {
@@ -179,6 +184,47 @@ public final class AdminService {
             return Result.ok(name + " téléporté vers toi.", "téléporte le joueur vers lui");
         }
         return Result.fail("Action inconnue.");
+    }
+
+    // ================================================================== suppression d'un joueur
+
+    /**
+     * Efface TOUTES les données d'un joueur hors ligne : fichiers du monde (inventaire, position, succès, stats),
+     * compte bancaire, permis, garage + fourrière, rôle staff. S'il revient, il repart de zéro.
+     */
+    private static Result deleteUser(ServerPlayer actor, Access acc, UUID id) {
+        MinecraftServer s = actor.server;
+        if (!acc.has(Perm.DELETE)) return Result.fail("Tu n'as pas la permission : " + Perm.DELETE.label + ".");
+        if (id == null || id.equals(Net.NIL)) return Result.fail("Aucun joueur sélectionné.");
+        if (id.equals(actor.getUUID())) return Result.fail("Tu ne peux pas te supprimer toi-même.");
+        if (Players.online(s, id) != null) return Result.fail("Le joueur doit être déconnecté (kick-le d'abord).");
+        if (!acc.owner && Access.rankOf(actor, id) >= acc.rank && Access.rankOf(actor, id) > 0) {
+            return Result.fail("Ce joueur est un membre du staff de rang supérieur ou égal au tien.");
+        }
+        String name = Players.name(s, id);
+        java.util.List<String> done = new java.util.ArrayList<>();
+        int files = 0;
+        java.nio.file.Path[] paths = {
+                s.getWorldPath(net.minecraft.world.level.storage.LevelResource.PLAYER_DATA_DIR).resolve(id + ".dat"),
+                s.getWorldPath(net.minecraft.world.level.storage.LevelResource.PLAYER_DATA_DIR).resolve(id + ".dat_old"),
+                s.getWorldPath(net.minecraft.world.level.storage.LevelResource.PLAYER_ADVANCEMENTS_DIR).resolve(id + ".json"),
+                s.getWorldPath(net.minecraft.world.level.storage.LevelResource.PLAYER_STATS_DIR).resolve(id + ".json")};
+        for (java.nio.file.Path p : paths) {
+            try {
+                if (java.nio.file.Files.deleteIfExists(p)) files++;
+            } catch (java.io.IOException e) {
+                com.minenorth_admin.MineNorthAdmin.LOG.warn("[Admin] Suppression impossible : {}", p, e);
+            }
+        }
+        if (files > 0) done.add("fichiers (" + files + ")");
+        if (Mods.bank() && BankModule.wipe(s, id)) done.add("banque");
+        if (Mods.permis() && PermisModule.wipe(s, id)) done.add("permis");
+        if (Mods.garage() && GarageModule.wipe(s, id)) done.add("garage");
+        if (StaffData.get(s).removeMember(id)) done.add("rôle staff");
+        if (done.isEmpty()) return Result.fail("Aucune donnée trouvée pour " + name + ".");
+        String what = String.join(", ", done);
+        AuditLog.log(actor, name, "joueur", "SUPPRIME le joueur (" + what + ")");
+        return Result.ok(name + " supprimé : " + what + ".", null);
     }
 
     // ================================================================== staff

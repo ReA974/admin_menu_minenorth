@@ -58,6 +58,29 @@ final class BankModule {
         return t;
     }
 
+    /** Supprime le compte (solde, nom, banquier) et les prêts du joueur. EuroBank n'a pas d'API pour ça : réflexion. */
+    @SuppressWarnings("unchecked")
+    static boolean wipe(MinecraftServer s, UUID id) {
+        BankData d = BankData.get(s);
+        boolean had = d.has(id) || d.isBanker(id) || d.openLoanOf(id) != null;
+        try {
+            for (String f : new String[]{"balances", "names"}) {
+                java.lang.reflect.Field fl = BankData.class.getDeclaredField(f);
+                fl.setAccessible(true);
+                ((java.util.Map<UUID, ?>) fl.get(d)).remove(id);
+            }
+            java.lang.reflect.Field loans = BankData.class.getDeclaredField("loans");
+            loans.setAccessible(true);
+            ((java.util.Map<UUID, Loan>) loans.get(d)).values().removeIf(l -> l.borrower.equals(id));
+        } catch (ReflectiveOperationException | RuntimeException e) {
+            com.minenorth_admin.MineNorthAdmin.LOG.warn("[Admin] Compte EuroBank non supprimé (solde mis à 0)", e);
+            if (d.has(id)) d.set(id, 0);
+        }
+        d.setBanker(id, false);
+        d.setDirty();
+        return had;
+    }
+
     private static void tell(MinecraftServer s, UUID id, String msg) {
         ServerPlayer p = Players.online(s, id);
         if (p != null && AdminConfig.NOTIFY_TARGET.get()) p.sendSystemMessage(Component.literal("[Banque] " + msg));

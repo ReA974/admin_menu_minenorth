@@ -15,6 +15,9 @@ Les trois mods sont **optionnels** : un onglet n'apparaît que si son mod est in
   - Permis : donner (durée en jours, vide = config, 0 = permanent), retirer, nouvelle carte, points, effacer les délais d'examen.
   - Garage : garage et fourrière ; supprimer, libérer de la fourrière, transférer à un autre joueur.
   - Inventaire + ender chest : copier, prendre, supprimer, tout vider, donner l'objet en main. Hors ligne : modifie le fichier `playerdata`.
+- **Supprimer un joueur** (bouton rouge dans sa fiche, double clic, joueur déconnecté) : efface TOUTES ses données —
+  fichiers du monde (inventaire, ender chest, position, succès, stats), compte bancaire et prêts, permis, garage et
+  fourrière, rôle staff. S'il revient, il repart de zéro. Permission « Supprimer un joueur » (propriétaire et Gérant par défaut).
 - **Staff** : rôles (nom, rang, permissions) et membres. Invisible pour les joueurs : `/mnadmin` n'existe même pas pour eux.
 - **Journal** : toutes les actions, aussi écrites dans `logs/minenorth_admin.log`.
 

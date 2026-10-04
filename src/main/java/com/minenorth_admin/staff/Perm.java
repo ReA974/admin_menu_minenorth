@@ -13,7 +13,8 @@ public enum Perm {
     INV_EDIT("Inventaire : modifier"),
     TELEPORT("Téléportation"),
     LOGS("Journal"),
-    STAFF("Gérer le staff");
+    STAFF("Gérer le staff"),
+    DELETE("Supprimer un joueur");
 
     public final String label;
 

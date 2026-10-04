@@ -35,6 +35,15 @@ final class GarageModule {
         return t;
     }
 
+    static boolean wipe(MinecraftServer s, UUID id) {
+        GarageData gd = GarageData.get(s);
+        ImpoundData im = ImpoundData.get(s);
+        boolean g = gd.garages.remove(id) != null, f = im.vehicles.remove(id) != null;
+        if (g) gd.setDirty();
+        if (f) im.setDirty();
+        return g || f;
+    }
+
     private static String label(GarageData.Stored v) {
         return v.label == null || v.label.isEmpty() ? v.itemId : v.label;
     }

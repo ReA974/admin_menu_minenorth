@@ -56,6 +56,13 @@ final class PermisModule {
         return t;
     }
 
+    static boolean wipe(MinecraftServer s, UUID id) {
+        PermisData d = PermisData.get(s);
+        boolean r = d.holders().remove(id) != null;
+        if (r) d.setDirty();
+        return r;
+    }
+
     private static void tell(MinecraftServer s, UUID id, String msg) {
         ServerPlayer p = Players.online(s, id);
         if (p != null && AdminConfig.NOTIFY_TARGET.get()) p.sendSystemMessage(Component.literal("[Permis] " + msg));
@@ -102,6 +109,13 @@ final class PermisModule {
                 tell(s, id, "Points de permis : " + v + "/" + cfg.maxPoints + ".");
                 return Result.ok(name + " : " + v + "/" + cfg.maxPoints + " points"
                         + (v == 0 && cfg.revokeAtZeroPoints ? " — permis de conduire retiré." : "."), "points " + before + " → " + v);
+            }
+            case "permis.stoptest" -> {
+                if (target == null) return Result.fail(name + " n'est pas connecté.");
+                boolean stopped = com.minenorth_permis.tests.DrivingTests.stop(target) | com.minenorth_permis.tests.ShootingTests.stop(target);
+                if (!stopped) return Result.fail(name + " ne passe aucune épreuve.");
+                tell(s, id, "Ton épreuve a été arrêtée par le staff.");
+                return Result.ok("Épreuve de " + name + " arrêtée.", "arrête son épreuve");
             }
             case "permis.cooldowns" -> {
                 PermisData d = PermisData.get(s);

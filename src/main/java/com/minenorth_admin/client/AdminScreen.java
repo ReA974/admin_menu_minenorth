@@ -96,6 +96,16 @@ public class AdminScreen extends Screen {
                 for (int i = 0; i < pl.size(); i++) perms.add(pl.getString(i));
                 owner = d.getBoolean("Owner");
                 if (!has("STAFF") && tab == Tab.STAFF) tab = Tab.PLAYERS;
+                // joueur supprimé : il disparaît de la liste, on ferme sa fiche
+                if (selected != null) {
+                    boolean still = false;
+                    ListTag ps = d.getList("Players", Tag.TAG_COMPOUND);
+                    for (int i = 0; i < ps.size() && !still; i++) still = ps.getCompound(i).getUUID("Id").equals(selected);
+                    if (!still) {
+                        selected = null;
+                        player = null;
+                    }
+                }
                 if (!has("LOGS") && tab == Tab.LOGS) tab = Tab.PLAYERS;
             }
             case "player" -> {
@@ -280,6 +290,20 @@ public class AdminScreen extends Screen {
         btn(300, 34, 44, 12, "TP vers", Btn.DARK, () -> send("tp.to", selected, "", section, 0)).enabled(on && has("TELEPORT"));
         btn(346, 34, 46, 12, "TP ici", Btn.DARK, () -> send("tp.here", selected, "", section, 0)).enabled(on && has("TELEPORT"));
         btn(330, 47, 62, 10, "Actualiser", Btn.GHOST, () -> openPlayer(selected, section));
+        if (has("DELETE")) {
+            UUID target = selected;
+            btn(262, 47, 64, 10, confirm.equals("udel") ? "Confirmer ?" : "Supprimer", Btn.RED, () -> {
+                if (confirm.equals("udel")) {
+                    confirm = "";
+                    send("user.delete", target, "", section, 0);
+                } else {
+                    confirm = "udel";
+                    message = "Clique encore : TOUTES ses données (inventaire, banque, permis, garage) seront effacées.";
+                    messageOk = false;
+                    rebuildWidgets();
+                }
+            }).enabled(!on).selected(confirm.equals("udel"));
+        }
 
         int x = RX;
         for (String s : sections()) {
@@ -398,6 +422,8 @@ public class AdminScreen extends Screen {
                 .enabled(edit && hasIt).selected(confirm.equals("revoke"));
         btn(RX + 192, 191, 76, 16, "Nouvelle carte", Btn.DARK, () -> send("permis.card", selected, id, "", 0))
                 .enabled(edit && hasIt && player.getBoolean("On"));
+        btn(RX + 176, 209, 92, 13, "Arrêter l'épreuve", Btn.RED, () -> send("permis.stoptest", selected, "", "", 0))
+                .enabled(edit && player.getBoolean("On"));
     }
 
     private void initGarage(CompoundTag d) {
@@ -595,8 +621,8 @@ public class AdminScreen extends Screen {
         for (int i = 0; i < all.length; i++) {
             com.minenorth_admin.staff.Perm p = all[i];
             boolean on = rp.contains(p.name());
-            int x = 166 + (i % 2) * 114, y = ST_Y + 40 + (i / 2) * 17;
-            btn(x, y, 110, 15, (on ? "✔ " : "✖ ") + p.label, on ? Btn.GREEN : Btn.DARK,
+            int x = 166 + (i % 2) * 114, y = ST_Y + 40 + (i / 2) * 15;
+            btn(x, y, 110, 14, (on ? "✔ " : "✖ ") + p.label, on ? Btn.GREEN : Btn.DARK,
                     () -> send("role.perm", null, id, p.name(), 0)).enabled(editable && has(p.name()));
         }
         btn(166, 206, 110, 16, "Supprimer le rôle", Btn.RED, () -> confirmThen("rdel", () -> {
@@ -962,7 +988,7 @@ public class AdminScreen extends Screen {
                     has ? "FF5FE0A0" : "FF8FA8E0"};
         });
         if (lic.isEmpty()) text(g, "Aucune licence dans la config du mod permis.", RX + 4, LIST_Y + 3, DIM);
-        text(g, "Jours : vide = " + d.getInt("DefaultDays") + " j (config), 0 = permanent", RX, 211, DIM);
+        textFit(g, "Jours : vide = " + d.getInt("DefaultDays") + " j (config), 0 = perm.", RX, 211, 172, DIM);
         ListTag cds = d.getList("Cooldowns", Tag.TAG_COMPOUND);
         if (!cds.isEmpty()) {
             StringBuilder b = new StringBuilder("Délais : ");

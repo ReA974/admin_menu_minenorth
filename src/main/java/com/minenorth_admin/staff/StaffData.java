@@ -89,6 +89,7 @@ public class StaffData extends SavedData {
         Role admin = d.addRole("Admin", 50);
         admin.perms.addAll(EnumSet.allOf(Perm.class));
         admin.perms.remove(Perm.STAFF);
+        admin.perms.remove(Perm.DELETE);
         Role boss = d.addRole("Gérant", 90);
         boss.perms.addAll(EnumSet.allOf(Perm.class));
         d.setDirty();
