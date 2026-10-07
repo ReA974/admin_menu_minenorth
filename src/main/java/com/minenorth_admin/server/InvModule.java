@@ -35,7 +35,7 @@ final class InvModule {
     /** a = "inv" ou "ender" ; n = emplacement ; b = id d'objet attendu (sécurité si l'inventaire a bougé). */
     static Result act(ServerPlayer actor, UUID id, String action, String a, String b, long n) {
         MinecraftServer s = actor.server;
-        String name = Players.name(s, id);
+        String name = Players.display(s, id);
         boolean ender = "ender".equals(a);
         PlayerInv pi = PlayerInv.load(s, id);
         if (pi == null) return Result.fail("Inventaire de " + name + " illisible (jamais connecté ?).");

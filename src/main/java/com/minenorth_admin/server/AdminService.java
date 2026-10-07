@@ -50,12 +50,21 @@ public final class AdminService {
                     Result r = act.equals("staff") ? null : staff(actor, acc, m);
                     sendStaff(actor, acc, r == null ? "" : r.message(), r == null || r.ok());
                 }
+                case "mode" -> {
+                    if (!acc.has(Perm.STAFF_MODE)) {
+                        deny(actor);
+                        return;
+                    }
+                    boolean on = StaffMode.toggle(actor);
+                    AuditLog.log(actor, "", "staff", on ? "active le mode staff" : "désactive le mode staff");
+                    sendHome(actor, acc, false, on ? "Mode staff activé : invisible + créatif." : "Mode staff désactivé.");
+                }
                 case "user" -> {
                     Result r = deleteUser(actor, acc, m.target());
                     if (r.ok()) sendHome(actor, Access.of(actor), false, r.message());
                     else sendPlayer(actor, acc, m.target(), m.b(), r.message(), false);
                 }
-                case "bank", "permis", "garage", "inv", "tp" -> {
+                case "bank", "permis", "garage", "police", "secours", "inv", "tp", "mod" -> {
                     Result r = playerAction(actor, acc, module, m);
                     String section = switch (module) {
                         case "tp" -> m.b().isEmpty() ? "bank" : m.b();
@@ -89,14 +98,23 @@ public final class AdminService {
         t.putBoolean("Bank", Mods.bank());
         t.putBoolean("Permis", Mods.permis());
         t.putBoolean("Garage", Mods.garage());
-        ListTag players = new ListTag();
+        t.putBoolean("Police", Mods.police());
+        t.putBoolean("Secours", Mods.secours());
+        t.putBoolean("StaffMode", StaffMode.is(actor));
+        // Liste triée sur le nom affiché (nom RP), joueurs connectés d'abord.
+        java.util.List<CompoundTag> rows = new java.util.ArrayList<>();
         for (Players.Known k : Players.all(s)) {
             CompoundTag p = new CompoundTag();
             p.putUUID("Id", k.id());
-            p.putString("Name", k.name());
+            p.putString("Name", Players.display(s, k.id()));
+            p.putString("Pseudo", k.name());
             p.putBoolean("On", k.online());
-            players.add(p);
+            rows.add(p);
         }
+        rows.sort((a, b) -> a.getBoolean("On") != b.getBoolean("On") ? (a.getBoolean("On") ? -1 : 1)
+                : a.getString("Name").compareToIgnoreCase(b.getString("Name")));
+        ListTag players = new ListTag();
+        players.addAll(rows);
         t.put("Players", players);
         Net.send(actor, new Net.View("home", t, msg, true));
     }
@@ -108,7 +126,10 @@ public final class AdminService {
             case "bank" -> acc.has(Perm.BANK_VIEW) && Mods.bank();
             case "permis" -> acc.has(Perm.PERMIS_VIEW) && Mods.permis();
             case "garage" -> acc.has(Perm.GARAGE_VIEW) && Mods.garage();
+            case "police" -> acc.has(Perm.POLICE_VIEW) && Mods.police();
+            case "secours" -> acc.has(Perm.SECOURS_VIEW) && Mods.secours();
             case "inv" -> acc.has(Perm.INV_VIEW);
+            case "mod" -> acc.has(Perm.MODERATE);
             default -> false;
         };
     }
@@ -118,7 +139,8 @@ public final class AdminService {
         if (id == null || id.equals(Net.NIL)) return;
         CompoundTag t = new CompoundTag();
         t.putUUID("Id", id);
-        t.putString("Name", Players.name(s, id));
+        t.putString("Name", Players.display(s, id));
+        t.putString("Pseudo", Players.name(s, id));
         ServerPlayer online = Players.online(s, id);
         t.putBoolean("On", online != null);
         if (online != null) {
@@ -135,6 +157,9 @@ public final class AdminService {
                 case "bank" -> BankModule.view(s, id);
                 case "permis" -> PermisModule.view(s, id);
                 case "garage" -> GarageModule.view(s, id);
+                case "police" -> PoliceModule.view(s, id);
+                case "secours" -> SecoursModule.view(s, id);
+                case "mod" -> ModModule.view(s, id);
                 default -> InvModule.view(s, id);
             };
             t.put("Data", data);
@@ -150,7 +175,10 @@ public final class AdminService {
             case "bank" -> Perm.BANK_EDIT;
             case "permis" -> Perm.PERMIS_EDIT;
             case "garage" -> Perm.GARAGE_EDIT;
+            case "police" -> Perm.POLICE_EDIT;
+            case "secours" -> Perm.SECOURS_EDIT;
             case "inv" -> Perm.INV_EDIT;
+            case "mod" -> Perm.MODERATE;
             default -> Perm.TELEPORT;
         };
         // copier un objet = lecture seule, mais ça crée des objets : réservé à INV_EDIT aussi
@@ -163,10 +191,13 @@ public final class AdminService {
             case "bank" -> Mods.bank() ? BankModule.act(actor, id, m.action(), m.n()) : Result.fail("EuroBank n'est pas installé.");
             case "permis" -> Mods.permis() ? PermisModule.act(actor, id, m.action(), m.a(), m.n()) : Result.fail("MineNorth Permis n'est pas installé.");
             case "garage" -> Mods.garage() ? GarageModule.act(actor, id, m.action(), m.a(), m.b(), m.n()) : Result.fail("Le mod garage n'est pas installé.");
+            case "police" -> Mods.police() ? PoliceModule.act(actor, id, m.action(), m.n()) : Result.fail("Le mod Police n'est pas installé.");
+            case "secours" -> Mods.secours() ? SecoursModule.act(actor, id, m.action(), m.n()) : Result.fail("Le mod Secours n'est pas installé.");
             case "inv" -> InvModule.act(actor, id, m.action(), m.a(), m.b(), m.n());
+            case "mod" -> ModModule.act(actor, id, m.action(), m.a(), m.n());
             default -> teleport(actor, id, m.action());
         };
-        if (r.ok() && r.log() != null) AuditLog.log(actor, Players.name(s, id), module, r.log());
+        if (r.ok() && r.log() != null) AuditLog.log(actor, Players.display(s, id), module, r.log());
         return r;
     }
 
@@ -174,7 +205,7 @@ public final class AdminService {
         ServerPlayer t = Players.online(actor.server, id);
         if (t == null) return Result.fail("Le joueur doit être connecté.");
         if (t == actor) return Result.fail("C'est toi.");
-        String name = t.getGameProfile().getName();
+        String name = Players.display(actor.server, id);
         if (action.equals("tp.to")) {
             actor.teleportTo(t.serverLevel(), t.getX(), t.getY(), t.getZ(), t.getYRot(), t.getXRot());
             return Result.ok("Téléporté vers " + name + ".", "se téléporte vers le joueur");
@@ -190,7 +221,8 @@ public final class AdminService {
 
     /**
      * Efface TOUTES les données d'un joueur hors ligne : fichiers du monde (inventaire, position, succès, stats),
-     * compte bancaire, permis, garage + fourrière, rôle staff. S'il revient, il repart de zéro.
+     * compte bancaire, permis, garage + fourrière, rôle staff, et via MineNorth API : identité, secours,
+     * entreprises, accueil police, portes. S'il revient, il repart de zéro.
      */
     private static Result deleteUser(ServerPlayer actor, Access acc, UUID id) {
         MinecraftServer s = actor.server;
@@ -201,7 +233,7 @@ public final class AdminService {
         if (!acc.owner && Access.rankOf(actor, id) >= acc.rank && Access.rankOf(actor, id) > 0) {
             return Result.fail("Ce joueur est un membre du staff de rang supérieur ou égal au tien.");
         }
-        String name = Players.name(s, id);
+        String name = Players.display(s, id);
         java.util.List<String> done = new java.util.ArrayList<>();
         int files = 0;
         java.nio.file.Path[] paths = {
@@ -220,7 +252,12 @@ public final class AdminService {
         if (Mods.bank() && BankModule.wipe(s, id)) done.add("banque");
         if (Mods.permis() && PermisModule.wipe(s, id)) done.add("permis");
         if (Mods.garage() && GarageModule.wipe(s, id)) done.add("garage");
+        if (Mods.police() && PoliceModule.wipe(s, id)) done.add("police");
         if (StaffData.get(s).removeMember(id)) done.add("rôle staff");
+        // Les autres mods (identité, secours, entreprises, accueil, portes…) nettoient eux-mêmes via MineNorth API.
+        fr.minenorth.api.PlayerWipeEvent wipe = new fr.minenorth.api.PlayerWipeEvent(s, id, name);
+        net.minecraftforge.common.MinecraftForge.EVENT_BUS.post(wipe);
+        done.addAll(wipe.cleaned());
         if (done.isEmpty()) return Result.fail("Aucune donnée trouvée pour " + name + ".");
         String what = String.join(", ", done);
         AuditLog.log(actor, name, "joueur", "SUPPRIME le joueur (" + what + ")");
@@ -253,8 +290,9 @@ public final class AdminService {
         for (Map.Entry<UUID, StaffData.Member> e : d.members().entrySet()) {
             CompoundTag mt = new CompoundTag();
             mt.putUUID("Id", e.getKey());
+            String rp = Players.rpName(actor.server, e.getKey());
             String n = Players.name(actor.server, e.getKey());
-            mt.putString("Name", n.length() == 8 && !e.getValue().name.isEmpty() ? e.getValue().name : n);
+            mt.putString("Name", !rp.isEmpty() ? rp : n.length() == 8 && !e.getValue().name.isEmpty() ? e.getValue().name : n);
             mt.putString("Role", e.getValue().role);
             mt.putBoolean("On", Players.online(actor.server, e.getKey()) != null);
             members.add(mt);
@@ -349,13 +387,14 @@ public final class AdminService {
                 if (r == null) return Result.fail("Choisis un rôle.");
                 if (r.rank >= acc.rank) return Result.fail("Tu ne peux attribuer que des rôles de rang inférieur au tien.");
                 Players.Known k = Players.byName(s, m.b());
-                if (k == null) return Result.fail("Joueur introuvable : " + m.b() + " (il doit s'être connecté au moins une fois).");
+                if (k == null) return Result.fail("Joueur introuvable : " + m.b() + " (nom RP « Prénom Nom » ou pseudo ; il doit s'être connecté au moins une fois).");
                 if (k.id().equals(actor.getUUID()) && !acc.owner) return Result.fail("Tu ne peux pas changer ton propre rôle.");
                 int current = Access.rankOf(actor, k.id());
-                if (current >= acc.rank) return Result.fail(k.name() + " a un rang supérieur ou égal au tien.");
+                if (current >= acc.rank) return Result.fail(Players.display(s, k.id()) + " a un rang supérieur ou égal au tien.");
                 d.setMember(k.id(), k.name(), r.id);
                 refreshCommands(s, k.id());
-                return Result.ok(k.name() + " a maintenant le rôle « " + r.name + " ».", k.name() + "|rôle " + r.name);
+                String shown = Players.display(s, k.id());
+                return Result.ok(shown + " a maintenant le rôle « " + r.name + " ».", shown + "|rôle " + r.name);
             }
             case "member.remove" -> {
                 UUID id = m.target();
@@ -365,7 +404,8 @@ public final class AdminService {
                 if (Access.rankOf(actor, id) >= acc.rank) return Result.fail("Ce membre a un rang supérieur ou égal au tien.");
                 d.removeMember(id);
                 refreshCommands(s, id);
-                return Result.ok(mem.name + " retiré du staff.", mem.name + "|retiré du staff");
+                String shown = Players.display(s, id);
+                return Result.ok(shown + " retiré du staff.", shown + "|retiré du staff");
             }
             default -> {
                 return Result.fail("Action inconnue.");

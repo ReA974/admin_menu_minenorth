@@ -72,7 +72,7 @@ final class PermisModule {
     static Result act(ServerPlayer actor, UUID id, String action, String a, long n) {
         MinecraftServer s = actor.server;
         PermisConfig.Root cfg = PermisConfig.get();
-        String name = Players.name(s, id);
+        String name = Players.display(s, id);
         ServerPlayer target = Players.online(s, id);
         PermisConfig.Licence def = cfg.licence(a);
         switch (action) {

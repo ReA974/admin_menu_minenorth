@@ -89,7 +89,7 @@ final class BankModule {
     static Result act(ServerPlayer actor, UUID id, String action, long n) {
         MinecraftServer s = actor.server;
         BankData d = BankData.get(s);
-        String name = Players.name(s, id);
+        String name = Players.display(s, id);
         switch (action) {
             case "bank.open" -> {
                 if (d.has(id)) return Result.fail(name + " a déjà un compte.");

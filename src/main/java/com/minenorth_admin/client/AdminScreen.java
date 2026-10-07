@@ -30,7 +30,7 @@ import java.util.Set;
 import java.util.UUID;
 
 /**
- * Panneau d'administration : onglets Joueurs (banque, permis, garage, inventaire, TP), Staff (rôles, membres) et Journal.
+ * Panneau d'administration : onglets Joueurs (banque, permis, garage, police, inventaire, TP), Staff (rôles, membres) et Journal.
  * L'écran n'affiche que ce que le serveur envoie ; toutes les actions sont revalidées côté serveur.
  */
 @OnlyIn(Dist.CLIENT)
@@ -57,8 +57,14 @@ public class AdminScreen extends Screen {
     private String section = "";
     private int listOffset;
     private int permisSel = -1, permisOffset;
-    private boolean garageImpound;
+    /** 0 = garage, 1 = fourrière, 2 = plaques (fichier des immatriculations). */
+    private int garageMode;
+
+    private String garageKey() {
+        return garageMode == 1 ? "Impound" : garageMode == 2 ? "Plates" : "Garage";
+    }
     private int garageSel = -1, garageOffset;
+    private int policeOffset, secoursOffset;
     private boolean invEnder;
     private int invSel = -1;
     private String confirm = "";   // action en attente de confirmation (2e clic)
@@ -135,7 +141,7 @@ public class AdminScreen extends Screen {
 
     private void resetSelections() {
         permisSel = garageSel = invSel = -1;
-        permisOffset = garageOffset = 0;
+        permisOffset = garageOffset = policeOffset = secoursOffset = 0;
         confirm = "";
     }
 
@@ -236,6 +242,10 @@ public class AdminScreen extends Screen {
             rebuildWidgets();
         }).selected(tab == Tab.PLAYERS);
 
+        if (has("STAFF_MODE")) {
+            boolean sm = home.getBoolean("StaffMode");
+            btn(8, 225, 110, 11, sm ? "Mode staff : ON" : "Mode staff : OFF", sm ? Btn.GREEN : Btn.DARK, () -> send("mode.toggle")).selected(sm);
+        }
         switch (tab) {
             case PLAYERS -> initPlayers();
             case STAFF -> initStaff();
@@ -254,7 +264,8 @@ public class AdminScreen extends Screen {
         ListTag l = home.getList("Players", Tag.TAG_COMPOUND);
         for (int i = 0; i < l.size(); i++) {
             CompoundTag p = l.getCompound(i);
-            if (q.isEmpty() || p.getString("Name").toLowerCase(Locale.ROOT).contains(q)) out.add(p);
+            if (q.isEmpty() || p.getString("Name").toLowerCase(Locale.ROOT).contains(q)
+                    || p.getString("Pseudo").toLowerCase(Locale.ROOT).contains(q)) out.add(p);
         }
         return out;
     }
@@ -264,7 +275,10 @@ public class AdminScreen extends Screen {
         if (home.getBoolean("Bank") && has("BANK_VIEW")) s.add("bank");
         if (home.getBoolean("Permis") && has("PERMIS_VIEW")) s.add("permis");
         if (home.getBoolean("Garage") && has("GARAGE_VIEW")) s.add("garage");
+        if (home.getBoolean("Police") && has("POLICE_VIEW")) s.add("police");
+        if (home.getBoolean("Secours") && has("SECOURS_VIEW")) s.add("secours");
         if (has("INV_VIEW")) s.add("inv");
+        if (has("MODERATE")) s.add("mod");
         return s;
     }
 
@@ -273,12 +287,15 @@ public class AdminScreen extends Screen {
             case "bank" -> "Banque";
             case "permis" -> "Permis";
             case "garage" -> "Garage";
+            case "police" -> "Police";
+            case "secours" -> "Pompiers";
+            case "mod" -> "Sanctions";
             default -> "Inventaire";
         };
     }
 
     private void initPlayers() {
-        box("search", PL_X, 34, PL_W, "Rechercher…", 16);
+        box("search", PL_X, 34, PL_W, "Nom RP ou pseudo…", 32);
         int max = Math.max(0, filteredPlayers().size() - PL_ROWS);
         btn(PL_X, PL_Y + PL_ROWS * PL_ROW + 4, PL_W / 2 - 1, 12, "▲", Btn.DARK, () -> listOffset = Math.max(0, listOffset - PL_ROWS))
                 .enabled(listOffset > 0);
@@ -306,12 +323,17 @@ public class AdminScreen extends Screen {
         }
 
         int x = RX;
-        for (String s : sections()) {
-            btn(x, 60, 64, 14, sectionLabel(s), Btn.DARK, () -> {
+        List<String> secs = sections();
+        // Largeur des onglets adaptée à leur nombre (5 onglets avec Police).
+        int tabW = secs.isEmpty() ? 64 : Math.min(64, (RW + 3) / secs.size() - 3);
+        for (String s : secs) {
+            String label = sectionLabel(s);
+            if (font.width(label) > tabW - 4) label = s.equals("inv") ? "Inv." : s.equals("mod") ? "Sanc." : s.equals("secours") ? "Pomp." : label;
+            btn(x, 60, tabW, 14, label, Btn.DARK, () -> {
                 confirm = "";
                 openPlayer(selected, s);
             }).selected(s.equals(section));
-            x += 67;
+            x += tabW + 3;
         }
         CompoundTag data = player.contains("Data") ? player.getCompound("Data") : null;
         if (data == null) return;
@@ -319,7 +341,10 @@ public class AdminScreen extends Screen {
             case "bank" -> initBank(data);
             case "permis" -> initPermis(data);
             case "garage" -> initGarage(data);
+            case "police" -> initPolice(data);
+            case "secours" -> initSecours(data);
             case "inv" -> initInv(data);
+            case "mod" -> initMod(data);
             default -> {}
         }
     }
@@ -428,34 +453,48 @@ public class AdminScreen extends Screen {
 
     private void initGarage(CompoundTag d) {
         boolean edit = has("GARAGE_EDIT");
-        ListTag g = d.getList("Garage", Tag.TAG_COMPOUND), f = d.getList("Impound", Tag.TAG_COMPOUND);
-        btn(RX, 76, 90, 14, "Garage (" + g.size() + ")", Btn.DARK, () -> {
-            garageImpound = false;
-            garageSel = -1;
-            garageOffset = 0;
-            rebuildWidgets();
-        }).selected(!garageImpound);
-        btn(RX + 94, 76, 90, 14, "Fourrière (" + f.size() + ")", Btn.DARK, () -> {
-            garageImpound = true;
-            garageSel = -1;
-            garageOffset = 0;
-            rebuildWidgets();
-        }).selected(garageImpound);
-        ListTag list = garageImpound ? f : g;
+        ListTag g = d.getList("Garage", Tag.TAG_COMPOUND), f = d.getList("Impound", Tag.TAG_COMPOUND), pl = d.getList("Plates", Tag.TAG_COMPOUND);
+        String[] names = {"Garage (" + g.size() + ")", "Fourrière (" + f.size() + ")", "Plaques (" + pl.size() + ")"};
+        for (int i = 0; i < 3; i++) {
+            final int mode = i;
+            btn(RX + i * 90, 76, 86, 14, names[i], Btn.DARK, () -> {
+                garageMode = mode;
+                garageSel = -1;
+                garageOffset = 0;
+                rebuildWidgets();
+            }).selected(garageMode == i);
+        }
+        ListTag list = d.getList(garageKey(), Tag.TAG_COMPOUND);
         int max = Math.max(0, list.size() - LIST_ROWS);
         listScroll(list.size(), () -> garageOffset = Math.max(0, garageOffset - 1), () -> garageOffset = Math.min(max, garageOffset + 1),
                 garageOffset > 0, garageOffset < max);
         boolean sel = garageSel >= 0 && garageSel < list.size();
         String label = sel ? list.getCompound(garageSel).getString("Label") : "";
         int idx = garageSel;
+        if (garageMode == 2) {
+            String plate = sel ? list.getCompound(garageSel).getString("Plate") : "";
+            btn(RX, 192, 70, 16, "Supprimer", Btn.RED,
+                    () -> confirmThen("pdel", () -> send("garage.plate.delete", selected, plate, "", idx)))
+                    .enabled(edit && sel).selected(confirm.equals("pdel"));
+            box("newOwner", RX + 74, 193, 110, "Nom RP du propriétaire", 32);
+            btn(RX + 188, 192, 80, 16, "Transférer", Btn.DARK, () -> {
+                if (in("newOwner").isEmpty()) {
+                    message = "Indique le nom du nouveau titulaire de la carte grise.";
+                    messageOk = false;
+                    return;
+                }
+                send("garage.plate.transfer", selected, plate, in("newOwner"), idx);
+            }).enabled(edit && sel);
+            return;
+        }
         btn(RX, 192, 70, 16, "Supprimer", Btn.RED,
-                () -> confirmThen("gdel", () -> send("garage.delete", selected, garageImpound ? "f" : "g", label, idx)))
+                () -> confirmThen("gdel", () -> send("garage.delete", selected, garageMode == 1 ? "f" : "g", label, idx)))
                 .enabled(edit && sel).selected(confirm.equals("gdel"));
-        if (garageImpound) {
+        if (garageMode == 1) {
             btn(RX + 74, 192, 110, 16, "Libérer → garage", Btn.GREEN, () -> send("garage.release", selected, "f", label, idx))
                     .enabled(edit && sel);
         } else {
-            box("newOwner", RX + 74, 193, 110, "Nouveau propriétaire", 16);
+            box("newOwner", RX + 74, 193, 110, "Nom RP du propriétaire", 32);
             btn(RX + 188, 192, 80, 16, "Transférer", Btn.DARK, () -> {
                 if (in("newOwner").isEmpty()) {
                     message = "Indique le pseudo du nouveau propriétaire.";
@@ -621,11 +660,11 @@ public class AdminScreen extends Screen {
         for (int i = 0; i < all.length; i++) {
             com.minenorth_admin.staff.Perm p = all[i];
             boolean on = rp.contains(p.name());
-            int x = 166 + (i % 2) * 114, y = ST_Y + 40 + (i / 2) * 15;
-            btn(x, y, 110, 14, (on ? "✔ " : "✖ ") + p.label, on ? Btn.GREEN : Btn.DARK,
+            int x = 166 + (i % 2) * 114, y = ST_Y + 40 + (i / 2) * 13;
+            btn(x, y, 110, 12, (on ? "✔ " : "✖ ") + p.label, on ? Btn.GREEN : Btn.DARK,
                     () -> send("role.perm", null, id, p.name(), 0)).enabled(editable && has(p.name()));
         }
-        btn(166, 206, 110, 16, "Supprimer le rôle", Btn.RED, () -> confirmThen("rdel", () -> {
+        btn(166, 214, 110, 14, "Supprimer le rôle", Btn.RED, () -> confirmThen("rdel", () -> {
             send("role.delete", null, id, "", 0);
             roleSel = null;
         })).enabled(editable).selected(confirm.equals("rdel"));
@@ -646,7 +685,7 @@ public class AdminScreen extends Screen {
             btn(240, ST_Y + ST_ROWS * ST_ROW / 2 + 1, 12, ST_ROWS * ST_ROW / 2 - 1, "▼", Btn.DARK,
                     () -> memberOffset = Math.min(max, memberOffset + 1)).enabled(memberOffset < max);
         }
-        box("memberName", 258, ST_Y + 12, 134, "Pseudo du joueur", 16);
+        box("memberName", 258, ST_Y + 12, 134, "Nom RP ou pseudo", 32);
         List<CompoundTag> as = assignable();
         if (newMemberRole == null || as.stream().noneMatch(r -> r.getString("Id").equals(newMemberRole))) {
             newMemberRole = as.isEmpty() ? null : as.get(as.size() - 1).getString("Id");   // le plus bas par défaut
@@ -716,8 +755,10 @@ public class AdminScreen extends Screen {
                 } else if (player != null && player.contains("Data")) {
                     CompoundTag data = player.getCompound("Data");
                     if (section.equals("permis")) permisOffset = clamp(permisOffset + d, data.getList("Licences", Tag.TAG_COMPOUND).size() - LIST_ROWS);
+                    if (section.equals("police")) policeOffset = clamp(policeOffset + d, data.getList("Officers", Tag.TAG_COMPOUND).size() - LIST_ROWS);
+                    if (section.equals("secours")) secoursOffset = clamp(secoursOffset + d, data.getList("Members", Tag.TAG_COMPOUND).size() - LIST_ROWS);
                     if (section.equals("garage")) garageOffset = clamp(garageOffset + d,
-                            data.getList(garageImpound ? "Impound" : "Garage", Tag.TAG_COMPOUND).size() - LIST_ROWS);
+                            data.getList(garageKey(), Tag.TAG_COMPOUND).size() - LIST_ROWS);
                 }
             }
             case STAFF -> {
@@ -768,7 +809,7 @@ public class AdminScreen extends Screen {
                         }
                     }
                 } else if (section.equals("garage")) {
-                    int n = data.getList(garageImpound ? "Impound" : "Garage", Tag.TAG_COMPOUND).size();
+                    int n = data.getList(garageKey(), Tag.TAG_COMPOUND).size();
                     for (int i = 0; i < LIST_ROWS; i++) {
                         int idx = garageOffset + i;
                         if (idx < n && inRow(mx, my, RX, LIST_Y + i * LIST_ROW, RW - 14, LIST_ROW)) {
@@ -910,7 +951,8 @@ public class AdminScreen extends Screen {
         }
         drawScaled(g, bold(player.getString("Name")), left + RX, top + 34, 1.2f, 170, WHITE);
         boolean on = player.getBoolean("On");
-        String status = on ? "● En ligne" : "● Hors ligne";
+        String pseudo = player.getString("Pseudo");
+        String status = (on ? "● En ligne" : "● Hors ligne") + (pseudo.isEmpty() || pseudo.equals(player.getString("Name")) ? "" : " · " + pseudo);
         text(g, status, RX, 48, on ? OK : DIM);
         if (on) textFit(g, player.getString("Where"), RX + font.width(status) + 6, 48, 200 - font.width(status), DIM);
         if (player.contains("StaffRole")) text(g, "Staff : " + player.getString("StaffRole"), RX + 176, 36, WARN);
@@ -933,7 +975,19 @@ public class AdminScreen extends Screen {
                 renderGarage(g, d, mx, my);
                 yield null;
             }
+            case "police" -> {
+                renderPolice(g, d, mx, my);
+                yield null;
+            }
+            case "secours" -> {
+                renderSecours(g, d, mx, my);
+                yield null;
+            }
             case "inv" -> renderInv(g, d, mx, my);
+            case "mod" -> {
+                renderMod(g, d);
+                yield null;
+            }
             default -> null;
         };
     }
@@ -1000,8 +1054,133 @@ public class AdminScreen extends Screen {
         }
     }
 
+    // ------------------------------------------------------------------ police
+
+    /** "30m", "2h", "7j" / "7d" -> minutes ; -1 si invalide. */
+    private static long minutes(String s) {
+        s = s.trim().toLowerCase(Locale.ROOT).replace(" ", "");
+        if (s.length() < 2) return -1;
+        try {
+            long n = Long.parseLong(s.substring(0, s.length() - 1));
+            if (n <= 0) return -1;
+            return switch (s.charAt(s.length() - 1)) {
+                case 'm' -> n;
+                case 'h' -> n * 60;
+                case 'j', 'd' -> n * 1440;
+                default -> -1;
+            };
+        } catch (NumberFormatException e) {
+            return -1;
+        }
+    }
+
+    private void initMod(CompoundTag d) {
+        boolean edit = has("MODERATE");
+        boolean on = player.getBoolean("On");
+        boolean banned = d.getBoolean("Banned");
+        UUID target = selected;
+        box("reason", RX, 98, RW, "Raison (affichée au joueur)", 100);
+        box("duration", RX, 120, 96, "Durée : 30m, 2h, 7j", 8);
+        btn(RX + 100, 119, 110, 16, "Ban temporaire", Btn.RED, () -> {
+            long m = minutes(in("duration"));
+            if (m < 0) {
+                message = "Durée invalide (ex. 30m, 2h, 7j).";
+                messageOk = false;
+                return;
+            }
+            confirmThen("tban", () -> send("mod.tempban", target, in("reason"), "", m));
+        }).enabled(edit).selected(confirm.equals("tban"));
+        btn(RX, 146, 86, 16, "Expulser", Btn.DARK, () -> send("mod.kick", target, in("reason"), "", 0)).enabled(edit && on);
+        btn(RX + 90, 146, 86, 16, confirm.equals("ban") ? "Confirmer ?" : "Ban définitif", Btn.RED,
+                () -> confirmThen("ban", () -> send("mod.ban", target, in("reason"), "", 0))).enabled(edit).selected(confirm.equals("ban"));
+        btn(RX + 180, 146, 88, 16, "Débannir", Btn.GREEN, () -> send("mod.unban", target, "", "", 0)).enabled(edit && banned);
+    }
+
+    private void renderMod(GuiGraphics g, CompoundTag d) {
+        if (d.getBoolean("Banned")) {
+            long exp = d.getLong("Expires");
+            String until = exp > 0 ? "jusqu'au " + new java.text.SimpleDateFormat("dd/MM/yyyy HH:mm").format(new java.util.Date(exp)) : "définitivement";
+            textFit(g, "Banni " + until + " · par " + d.getString("By"), RX, 79, RW, BAD);
+            if (!d.getString("Reason").isEmpty()) textFit(g, "Raison : " + d.getString("Reason"), RX, 88, RW, DIM);
+        } else {
+            text(g, "Non banni", RX, 79, OK);
+        }
+        text(g, "Ban temporaire : indique une durée. Ban définitif : sans durée.", RX, 172, DIM);
+        if (!has("MODERATE")) text(g, "Pas de droit de sanction.", RX, 186, DIM);
+    }
+
+    private void initPolice(CompoundTag d) {
+        boolean edit = has("POLICE_EDIT");
+        boolean on = player.getBoolean("On");
+        boolean police = d.getBoolean("Police");
+        ListTag officers = d.getList("Officers", Tag.TAG_COMPOUND);
+        int max = Math.max(0, officers.size() - LIST_ROWS);
+        listScroll(officers.size(), () -> policeOffset = Math.max(0, policeOffset - 1), () -> policeOffset = Math.min(max, policeOffset + 1),
+                policeOffset > 0, policeOffset < max);
+        if (police) {
+            btn(RX, 191, RW, 16, "Retirer de la police", Btn.RED,
+                    () -> confirmThen("police", () -> send("police.remove", selected, "", "", 0))).enabled(edit).selected(confirm.equals("police"));
+        } else {
+            btn(RX, 191, RW, 16, "Faire entrer dans la police", Btn.GREEN, () -> send("police.add", selected, "", "", 0)).enabled(edit);
+        }
+        btn(RX, 210, 130, 14, "Donner la tablette", Btn.DARK, () -> send("police.tablet", selected, "", "", 0)).enabled(edit && on && police);
+        btn(RX + 134, 210, 134, 14, "Donner l'équipement", Btn.DARK, () -> send("police.kit", selected, "", "", 0)).enabled(edit && on && police);
+    }
+
+    private void renderPolice(GuiGraphics g, CompoundTag d, int mx, int my) {
+        boolean police = d.getBoolean("Police");
+        ListTag officers = d.getList("Officers", Tag.TAG_COMPOUND);
+        text(g, police ? "Policier (" + d.getString("Grade") + ")" : "Pas dans la police", RX, 79, police ? OK : DIM);
+        text(g, "Effectifs : " + officers.size(), RX + 170, 79, DIM);
+        policeOffset = clamp(policeOffset, officers.size() - LIST_ROWS);
+        renderList(g, mx, my, officers.size(), policeOffset, -1, i -> {
+            CompoundTag o = officers.getCompound(i);
+            return new String[]{(o.getBoolean("On") ? "● " : "○ ") + o.getString("Name"), o.getString("Grade"), "FF8FA8E0"};
+        });
+        if (officers.isEmpty()) text(g, "Aucun policier pour le moment.", RX + 4, LIST_Y + 3, DIM);
+        if (!has("POLICE_EDIT")) text(g, "Lecture seule (pas de droit de modification).", RX, 228, DIM);
+    }
+
+    private void initSecours(CompoundTag d) {
+        boolean edit = has("SECOURS_EDIT");
+        boolean on = player.getBoolean("On");
+        boolean member = d.getBoolean("Secours");
+        int current = d.getInt("GradeIdx");
+        ListTag grades = d.getList("Grades", Tag.TAG_STRING);
+        ListTag members = d.getList("Members", Tag.TAG_COMPOUND);
+        int max = Math.max(0, members.size() - LIST_ROWS);
+        listScroll(members.size(), () -> secoursOffset = Math.max(0, secoursOffset - 1), () -> secoursOffset = Math.min(max, secoursOffset + 1),
+                secoursOffset > 0, secoursOffset < max);
+        // Un bouton par grade : nomme le joueur pompier s'il ne l'est pas encore, sinon change son grade.
+        int n = Math.max(1, grades.size());
+        int w = (RW - 3 * (n - 1)) / n;
+        for (int i = 0; i < grades.size(); i++) {
+            int idx = i;
+            btn(RX + i * (w + 3), 191, w, 16, grades.getString(i), member ? Btn.DARK : Btn.GREEN,
+                    () -> send("secours.grade", selected, "", "", idx)).enabled(edit && !(member && current == idx)).selected(member && current == idx);
+        }
+        btn(RX, 210, 130, 14, "Retirer des pompiers", Btn.RED,
+                () -> confirmThen("secours", () -> send("secours.remove", selected, "", "", 0))).enabled(edit && member).selected(confirm.equals("secours"));
+        btn(RX + 134, 210, 134, 14, "Donner la tablette", Btn.DARK, () -> send("secours.tablet", selected, "", "", 0)).enabled(edit && on && member);
+    }
+
+    private void renderSecours(GuiGraphics g, CompoundTag d, int mx, int my) {
+        boolean member = d.getBoolean("Secours");
+        ListTag members = d.getList("Members", Tag.TAG_COMPOUND);
+        text(g, member ? "Pompier (" + d.getString("Grade") + ")" : "Pas pompier", RX, 79, member ? OK : DIM);
+        text(g, "Effectifs : " + members.size(), RX + 170, 79, DIM);
+        secoursOffset = clamp(secoursOffset, members.size() - LIST_ROWS);
+        renderList(g, mx, my, members.size(), secoursOffset, -1, i -> {
+            CompoundTag o = members.getCompound(i);
+            return new String[]{(o.getBoolean("On") ? "● " : "○ ") + o.getString("Name"), o.getString("Grade"), "FFE08F8F"};
+        });
+        if (members.isEmpty()) text(g, "Aucun pompier pour le moment.", RX + 4, LIST_Y + 3, DIM);
+        if (!has("SECOURS_EDIT")) text(g, "Lecture seule (pas de droit de modification).", RX, 228, DIM);
+        else text(g, member ? "Clique un grade pour le changer." : "Clique un grade pour le nommer pompier.", RX, 228, DIM);
+    }
+
     private void renderGarage(GuiGraphics g, CompoundTag d, int mx, int my) {
-        ListTag list = d.getList(garageImpound ? "Impound" : "Garage", Tag.TAG_COMPOUND);
+        ListTag list = d.getList(garageKey(), Tag.TAG_COMPOUND);
         garageOffset = clamp(garageOffset, list.size() - LIST_ROWS);
         renderList(g, mx, my, list.size(), garageOffset, garageSel, i -> {
             CompoundTag v = list.getCompound(i);
@@ -1009,7 +1188,7 @@ public class AdminScreen extends Screen {
             int c = item.indexOf(':');
             return new String[]{v.getString("Label"), c >= 0 ? item.substring(c + 1) : item, "FF8FA8E0"};
         });
-        if (list.isEmpty()) text(g, garageImpound ? "Aucun véhicule en fourrière." : "Garage vide.", RX + 4, LIST_Y + 3, DIM);
+        if (list.isEmpty()) text(g, garageMode == 1 ? "Aucun véhicule en fourrière." : garageMode == 2 ? "Aucune plaque à son nom." : "Garage vide.", RX + 4, LIST_Y + 3, DIM);
         if (!has("GARAGE_EDIT")) text(g, "Lecture seule.", RX, 214, DIM);
     }
 

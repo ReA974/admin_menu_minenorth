@@ -17,4 +17,12 @@ public final class Mods {
     public static boolean garage() {
         return ModList.get().isLoaded("minenorth_rp_vehicles");
     }
+
+    public static boolean police() {
+        return ModList.get().isLoaded("minenorthpolice");
+    }
+
+    public static boolean secours() {
+        return ModList.get().isLoaded("minenorthsecours");
+    }
 }

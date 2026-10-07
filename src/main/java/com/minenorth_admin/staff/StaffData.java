@@ -115,12 +115,27 @@ public class StaffData extends SavedData {
             CompoundTag t = ll.getCompound(i);
             d.logs.addLast(new LogEntry(t.getLong("T"), t.getString("A"), t.getString("P"), t.getString("M"), t.getString("X")));
         }
+        // migration : nouvelle permission "Carte : voir joueurs" donnée une fois aux rôles qui gèrent le staff (Gérant)
+        if (!tag.getBoolean("MigrMapPlayers")) {
+            for (Role r : d.roles.values()) if (r.perms.contains(Perm.STAFF)) r.perms.add(Perm.MAP_PLAYERS);
+            d.setDirty();
+        }
+        // migration : permissions Pompiers données une fois aux rôles qui avaient déjà les droits Police correspondants
+        if (!tag.getBoolean("MigrSecours")) {
+            for (Role r : d.roles.values()) {
+                if (r.perms.contains(Perm.POLICE_VIEW)) r.perms.add(Perm.SECOURS_VIEW);
+                if (r.perms.contains(Perm.POLICE_EDIT)) r.perms.add(Perm.SECOURS_EDIT);
+            }
+            d.setDirty();
+        }
         return d;
     }
 
     @Override
     public CompoundTag save(CompoundTag tag) {
         tag.putInt("NextRole", nextRole);
+        tag.putBoolean("MigrMapPlayers", true);
+        tag.putBoolean("MigrSecours", true);
         ListTag rl = new ListTag();
         for (Role r : roles.values()) rl.add(r.save());
         tag.put("Roles", rl);

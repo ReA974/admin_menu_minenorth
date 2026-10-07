@@ -45,6 +45,20 @@ public final class Players {
         return id.toString().substring(0, 8);
     }
 
+    /**
+     * Nom affiché dans le panneau : « NOM Prénom » de la carte d'identité (mod minenorthidentite),
+     * sinon le pseudo Minecraft si le joueur n'a pas encore de carte.
+     */
+    public static String display(MinecraftServer s, UUID id) {
+        String rp = rpName(s, id);
+        return rp.isEmpty() ? name(s, id) : rp;
+    }
+
+    /** « NOM Prénom » de la carte d'identité (format administratif), ou "" sans carte. MineNorth API. */
+    public static String rpName(MinecraftServer s, UUID id) {
+        return fr.minenorth.api.MineNorth.identity().get(s, id).map(fr.minenorth.api.Identity::officialName).orElse("");
+    }
+
     /** Tous les joueurs connus, en ligne d'abord puis par nom. */
     public static List<Known> all(MinecraftServer s) {
         Map<UUID, Known> map = new LinkedHashMap<>();
@@ -68,14 +82,22 @@ public final class Players {
         return out;
     }
 
-    /** Recherche par nom exact (insensible à la casse) parmi les joueurs connus. */
+    /** Recherche par nom RP (« Prénom Nom », dans un sens ou l'autre) ou par pseudo exact, insensible à la casse. */
     @Nullable
     public static Known byName(MinecraftServer s, String name) {
         if (name == null || name.isBlank()) return null;
-        String n = name.trim();
+        String n = name.trim().replaceAll("\\s+", " ");
+        List<Known> all = all(s);
+        for (Known k : all) {
+            String rp = rpName(s, k.id());
+            if (rp.isEmpty()) continue;
+            String[] parts = rp.split(" ", 2);
+            String reversed = parts.length == 2 ? parts[1] + " " + parts[0] : rp;
+            if (rp.equalsIgnoreCase(n) || reversed.equalsIgnoreCase(n)) return k;
+        }
         ServerPlayer p = s.getPlayerList().getPlayerByName(n);
         if (p != null) return new Known(p.getUUID(), p.getGameProfile().getName(), true);
-        for (Known k : all(s)) if (k.name().equalsIgnoreCase(n)) return k;
+        for (Known k : all) if (k.name().equalsIgnoreCase(n)) return k;
         return null;
     }
 }

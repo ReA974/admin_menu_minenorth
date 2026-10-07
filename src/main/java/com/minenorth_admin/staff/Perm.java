@@ -12,9 +12,16 @@ public enum Perm {
     INV_VIEW("Inventaire : voir"),
     INV_EDIT("Inventaire : modifier"),
     TELEPORT("Téléportation"),
+    POLICE_VIEW("Police : voir"),
+    POLICE_EDIT("Police : ajouter / retirer"),
+    SECOURS_VIEW("Pompiers : voir"),
+    SECOURS_EDIT("Pompiers : nommer / grades"),
     LOGS("Journal"),
     STAFF("Gérer le staff"),
-    DELETE("Supprimer un joueur");
+    DELETE("Supprimer un joueur"),
+    MAP_PLAYERS("Carte : voir joueurs"),
+    STAFF_MODE("Mode staff (vanish + créatif)"),
+    MODERATE("Sanctions : kick / ban");
 
     public final String label;
 

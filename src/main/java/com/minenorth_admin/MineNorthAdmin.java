@@ -30,6 +30,7 @@ public class MineNorthAdmin {
         bus.addListener(this::commonSetup);
         ModLoadingContext.get().registerConfig(ModConfig.Type.SERVER, AdminConfig.SPEC);
         MinecraftForge.EVENT_BUS.register(this);
+        MinecraftForge.EVENT_BUS.register(new com.minenorth_admin.server.StaffMode());
     }
 
     private void commonSetup(FMLCommonSetupEvent e) {

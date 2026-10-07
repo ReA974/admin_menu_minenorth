@@ -7,17 +7,28 @@ Forge 1.20.1. Commande **`/mnadmin`** : un seul écran pour gérer les joueurs (
    Si tu changes une version, mets à jour `gradle.properties`.
 2. `./gradlew build` → `build/libs/minenorth_admin-1.0.0.jar` (serveur ET clients).
 
-Les trois mods sont **optionnels** : un onglet n'apparaît que si son mod est installé.
+Les mods (EuroBank, Permis, Véhicules, Police, Secours) sont **optionnels** : un onglet n'apparaît que si son mod est installé.
+
+## Noms
+Partout dans le panneau, les joueurs sont affichés avec le nom RP de leur carte d'identité (mod `minenorthidentite`),
+sinon leur pseudo s'ils n'en ont pas encore. La recherche et les champs « joueur » acceptent le nom RP (« Prénom Nom »)
+ou le pseudo.
 
 ## Onglets
 - **Joueurs** : recherche, fiche joueur, TP vers / TP ici.
   - Banque : solde (définir / ajouter / retirer), ouvrir un compte, banquier, carte bancaire, annuler une dette / refuser une demande de prêt.
   - Permis : donner (durée en jours, vide = config, 0 = permanent), retirer, nouvelle carte, points, effacer les délais d'examen.
   - Garage : garage et fourrière ; supprimer, libérer de la fourrière, transférer à un autre joueur.
+  - Police (si MineNorth Police est installé) : faire entrer un joueur dans la police (au grade le plus bas) ou l'en retirer,
+    hors ligne aussi, et lui donner la tablette ou l'équipement (connecté). Les grades ne se gèrent pas ici :
+    tablette du Commissaire ou `/police grade`. Permissions « Police : voir » et « Police : ajouter / retirer ».
+  - Pompiers (si MineNorth Secours est installé) : nommer un joueur pompier (choix du grade : Chef des secours, Médecin, Secouriste),
+    changer son grade, le retirer (hors ligne aussi) et lui donner la tablette (connecté). Permissions « Pompiers : voir » et
+    « Pompiers : nommer / grades ». Nécessite le mod Secours à jour (nouvelle API `SecoursApi`).
   - Inventaire + ender chest : copier, prendre, supprimer, tout vider, donner l'objet en main. Hors ligne : modifie le fichier `playerdata`.
 - **Supprimer un joueur** (bouton rouge dans sa fiche, double clic, joueur déconnecté) : efface TOUTES ses données —
   fichiers du monde (inventaire, ender chest, position, succès, stats), compte bancaire et prêts, permis, garage et
-  fourrière, rôle staff. S'il revient, il repart de zéro. Permission « Supprimer un joueur » (propriétaire et Gérant par défaut).
+  fourrière, grade police, rôle staff. S'il revient, il repart de zéro. Permission « Supprimer un joueur » (propriétaire et Gérant par défaut).
 - **Staff** : rôles (nom, rang, permissions) et membres. Invisible pour les joueurs : `/mnadmin` n'existe même pas pour eux.
 - **Journal** : toutes les actions, aussi écrites dans `logs/minenorth_admin.log`.
 
