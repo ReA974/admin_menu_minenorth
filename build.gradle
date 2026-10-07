@@ -121,10 +121,12 @@ repositories {
     flatDir {
         dir 'libs'
     }
+    flatDir { dirs '../minenorth-api/build/libs' }   // MineNorth API (builder minenorth-api d'abord)
 }
 
 dependencies {
     minecraft "net.minecraftforge:forge:${minecraft_version}-${forge_version}"
+    implementation fg.deobf("blank:minenorth_api:1.0.0")
 
     // Mods MineNorth gérés par le panneau : tous OPTIONNELS (compileOnly).
     // Copier leurs jars construits dans ./libs (noms exacts ci-dessous). fg.deobf remappe les noms SRG.
