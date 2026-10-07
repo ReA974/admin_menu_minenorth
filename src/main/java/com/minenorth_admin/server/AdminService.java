@@ -42,6 +42,14 @@ public final class AdminService {
                     if (!acc.has(Perm.LOGS)) deny(actor);
                     else sendLogs(actor);
                 }
+                case "etat" -> {
+                    if (!acc.has(Perm.ETAT_VIEW) || !Mods.etat()) {
+                        deny(actor);
+                        return;
+                    }
+                    Result r = act.equals("etat") ? null : etatAction(actor, acc, m);
+                    sendEtat(actor, r == null ? "" : r.message(), r == null || r.ok());
+                }
                 case "staff", "role", "member" -> {
                     if (!acc.has(Perm.STAFF)) {
                         deny(actor);
@@ -100,6 +108,7 @@ public final class AdminService {
         t.putBoolean("Garage", Mods.garage());
         t.putBoolean("Police", Mods.police());
         t.putBoolean("Secours", Mods.secours());
+        t.putBoolean("Etat", Mods.etat());
         t.putBoolean("StaffMode", StaffMode.is(actor));
         // Liste triée sur le nom affiché (nom RP), joueurs connectés d'abord.
         java.util.List<CompoundTag> rows = new java.util.ArrayList<>();
@@ -411,6 +420,19 @@ public final class AdminService {
                 return Result.fail("Action inconnue.");
             }
         }
+    }
+
+    // ================================================================== état
+
+    private static Result etatAction(ServerPlayer actor, Access acc, Req m) {
+        if (!acc.has(Perm.ETAT_EDIT)) return Result.fail("Tu n'as pas la permission : " + Perm.ETAT_EDIT.label + ".");
+        Result r = EtatModule.act(actor, m.action(), m.a(), m.n());
+        if (r.ok() && r.log() != null) AuditLog.log(actor, "", "état", r.log());
+        return r;
+    }
+
+    private static void sendEtat(ServerPlayer actor, String msg, boolean ok) {
+        Net.send(actor, new Net.View("etat", EtatModule.view(actor.server), msg, ok));
     }
 
     // ================================================================== journal

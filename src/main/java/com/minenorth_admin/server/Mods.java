@@ -22,6 +22,10 @@ public final class Mods {
         return ModList.get().isLoaded("minenorthpolice");
     }
 
+    public static boolean etat() {
+        return ModList.get().isLoaded("minenorthetat");
+    }
+
     public static boolean secours() {
         return ModList.get().isLoaded("minenorthsecours");
     }

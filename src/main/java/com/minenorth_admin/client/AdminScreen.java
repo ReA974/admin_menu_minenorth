@@ -41,12 +41,12 @@ public class AdminScreen extends Screen {
     static final int TEXT = 0xFFCFE3FF, DIM = 0xFF8FA8E0, WARN = 0xFFFFE066, OK = 0xFF5FE0A0, BAD = 0xFFFF5F6B, WHITE = 0xFFFFFFFF;
     static final int CYAN = Btn.CYAN;
 
-    enum Tab { PLAYERS, STAFF, LOGS }
+    enum Tab { PLAYERS, STAFF, ETAT, LOGS }
 
     // ------------------------------------------------------------------ état
     private Tab tab = Tab.PLAYERS;
     private CompoundTag home = new CompoundTag();
-    @Nullable private CompoundTag player, staff, logs;
+    @Nullable private CompoundTag player, staff, logs, etat;
     private final Set<String> perms = new HashSet<>();
     private boolean owner;
     private String message = "";
@@ -113,6 +113,7 @@ public class AdminScreen extends Screen {
                     }
                 }
                 if (!has("LOGS") && tab == Tab.LOGS) tab = Tab.PLAYERS;
+                if ((!has("ETAT_VIEW") || !home.getBoolean("Etat")) && tab == Tab.ETAT) tab = Tab.PLAYERS;
             }
             case "player" -> {
                 UUID id = d.getUUID("Id");
@@ -129,6 +130,7 @@ public class AdminScreen extends Screen {
             }
             case "staff" -> staff = d;
             case "logs" -> logs = d;
+            case "etat" -> etat = d;
             default -> {}
         }
         if (!v.message().isEmpty()) {
@@ -220,20 +222,28 @@ public class AdminScreen extends Screen {
         x -= 44;
         btn(x, 9, 44, 14, "Fermer", Btn.GHOST, this::onClose);
         if (has("LOGS")) {
-            x -= 58;
-            btn(x, 9, 54, 14, "Journal", Btn.GHOST, () -> {
+            x -= 54;
+            btn(x, 9, 50, 14, "Journal", Btn.GHOST, () -> {
                 tab = Tab.LOGS;
                 send("logs");
                 rebuildWidgets();
             }).selected(tab == Tab.LOGS);
         }
         if (has("STAFF")) {
-            x -= 50;
-            btn(x, 9, 46, 14, "Staff", Btn.GHOST, () -> {
+            x -= 46;
+            btn(x, 9, 42, 14, "Staff", Btn.GHOST, () -> {
                 tab = Tab.STAFF;
                 send("staff");
                 rebuildWidgets();
             }).selected(tab == Tab.STAFF);
+        }
+        if (has("ETAT_VIEW") && home.getBoolean("Etat")) {
+            x -= 44;
+            btn(x, 9, 40, 14, "État", Btn.GHOST, () -> {
+                tab = Tab.ETAT;
+                send("etat");
+                rebuildWidgets();
+            }).selected(tab == Tab.ETAT);
         }
         x -= 54;
         btn(x, 9, 50, 14, "Joueurs", Btn.GHOST, () -> {
@@ -249,6 +259,7 @@ public class AdminScreen extends Screen {
         switch (tab) {
             case PLAYERS -> initPlayers();
             case STAFF -> initStaff();
+            case ETAT -> initEtat();
             case LOGS -> initLogs();
         }
     }
@@ -712,6 +723,58 @@ public class AdminScreen extends Screen {
         }
     }
 
+    // ================================================================== état
+
+    private void initEtat() {
+        boolean edit = has("ETAT_EDIT");
+        boolean electionOn = etat != null && etat.getBoolean("Election");
+        box("etatTax", 8, 98, 80, "% (ex. 2,5)", 8);
+        btn(94, 97, 110, 16, "Fixer l'impôt", Btn.GREEN, () -> send("etat.tax", null, in("etatTax"), "", 0)).enabled(edit && !in("etatTax").isEmpty());
+        btn(208, 97, 120, 16, "Valeur de la config", Btn.DARK, () -> send("etat.taxreset")).enabled(edit);
+        box("etatMayor", 8, 134, 150, "Pseudo ou nom RP", 32);
+        btn(162, 133, 100, 16, "Nommer maire", Btn.GREEN, () -> send("etat.mayor", null, in("etatMayor"), "", 0)).enabled(edit && !in("etatMayor").isEmpty());
+        btn(266, 133, 120, 16, "Retirer le maire", Btn.RED, () -> confirmThen("nomayor", () -> send("etat.nomayor")))
+                .enabled(edit && etat != null && !etat.getString("Mayor").isEmpty()).selected(confirm.equals("nomayor"));
+        box("etatMin", 8, 170, 80, "minutes (vide = config)", 6);
+        btn(94, 169, 70, 16, "Ouvrir", Btn.GREEN, () -> {
+            String v = in("etatMin");
+            long min = 0;
+            try {
+                if (!v.isEmpty()) min = Long.parseLong(v);
+            } catch (NumberFormatException e) {
+                message = "Durée invalide (minutes).";
+                messageOk = false;
+                return;
+            }
+            send("etat.open", null, "", "", min);
+        }).enabled(edit && !electionOn);
+        btn(168, 169, 70, 16, "Clôturer", Btn.DARK, () -> send("etat.close")).enabled(edit && electionOn);
+        btn(242, 169, 70, 16, "Annuler", Btn.RED, () -> confirmThen("elcancel", () -> send("etat.cancel")))
+                .enabled(edit && electionOn).selected(confirm.equals("elcancel"));
+    }
+
+    private static String num(double v) {
+        String s = String.format(Locale.ROOT, "%.2f", v);
+        return s.contains(".") ? s.replaceAll("0+$", "").replaceAll("[.]$", "") : s;
+    }
+
+    private void renderEtat(GuiGraphics g) {
+        if (etat == null) {
+            text(g, "Chargement…", 8, 40, DIM);
+            return;
+        }
+        long bal = etat.getLong("Balance");
+        text(g, "Trésor : " + (bal / 100) + (bal % 100 == 0 ? "" : "," + String.format("%02d", Math.abs(bal % 100))) + " €", 8, 40, WHITE);
+        text(g, "Impôt sur chaque achat : " + num(etat.getDouble("Tax")) + " %  (plafond du maire : " + num(etat.getDouble("TaxMax")) + " %)", 8, 52, TEXT);
+        String mayor = etat.getString("Mayor");
+        text(g, mayor.isEmpty() ? "Maire : personne" : "Maire : " + mayor, 8, 64, mayor.isEmpty() ? DIM : OK);
+        text(g, "Élection : " + (etat.getBoolean("Election") ? "en cours" : "aucune") + " · Agents municipaux : " + etat.getInt("Agents"), 8, 76, DIM);
+        text(g, "Impôt (part de chaque achat versée au trésor)", 8, 88, DIM);
+        text(g, "Maire (remplace l'actuel, ses agents sont révoqués)", 8, 124, DIM);
+        text(g, "Élection (durée en minutes)", 8, 160, DIM);
+        if (!has("ETAT_EDIT")) text(g, "Lecture seule (pas de droit de modification).", 8, 196, DIM);
+    }
+
     // ================================================================== journal
 
     private static final int LOG_Y = 52, LOG_ROW = 11, LOG_ROWS = 16;
@@ -915,6 +978,7 @@ public class AdminScreen extends Screen {
                 if (o instanceof ItemStack st) tip = st;
             }
             case STAFF -> renderStaff(g, mx, my);
+            case ETAT -> renderEtat(g);
             case LOGS -> textTip = renderLogs(g, mx, my);
         }
         if (!message.isEmpty()) textFit(g, message, 8, H - 11, W - 16, messageOk ? OK : WARN);
@@ -1118,13 +1182,23 @@ public class AdminScreen extends Screen {
         listScroll(officers.size(), () -> policeOffset = Math.max(0, policeOffset - 1), () -> policeOffset = Math.min(max, policeOffset + 1),
                 policeOffset > 0, policeOffset < max);
         if (police) {
-            btn(RX, 191, RW, 16, "Retirer de la police", Btn.RED,
-                    () -> confirmThen("police", () -> send("police.remove", selected, "", "", 0))).enabled(edit).selected(confirm.equals("police"));
+            // Un bouton par grade ; le grade actuel est surligné.
+            int current = d.getInt("GradeIdx");
+            ListTag grades = d.getList("Grades", Tag.TAG_STRING);
+            int n = Math.max(1, grades.size());
+            int w = (RW - 3 * (n - 1)) / n;
+            for (int i = 0; i < grades.size(); i++) {
+                int idx = i;
+                btn(RX + i * (w + 3), 191, w, 16, grades.getString(i), Btn.DARK,
+                        () -> send("police.grade", selected, "", "", idx)).enabled(edit && current != idx).selected(current == idx);
+            }
         } else {
             btn(RX, 191, RW, 16, "Faire entrer dans la police", Btn.GREEN, () -> send("police.add", selected, "", "", 0)).enabled(edit);
         }
-        btn(RX, 210, 130, 14, "Donner la tablette", Btn.DARK, () -> send("police.tablet", selected, "", "", 0)).enabled(edit && on && police);
-        btn(RX + 134, 210, 134, 14, "Donner l'équipement", Btn.DARK, () -> send("police.kit", selected, "", "", 0)).enabled(edit && on && police);
+        btn(RX, 210, 88, 14, "Retirer", Btn.RED,
+                () -> confirmThen("police", () -> send("police.remove", selected, "", "", 0))).enabled(edit && police).selected(confirm.equals("police"));
+        btn(RX + 90, 210, 88, 14, "Tablette", Btn.DARK, () -> send("police.tablet", selected, "", "", 0)).enabled(edit && on && police);
+        btn(RX + 180, 210, 88, 14, "Équipement", Btn.DARK, () -> send("police.kit", selected, "", "", 0)).enabled(edit && on && police);
     }
 
     private void renderPolice(GuiGraphics g, CompoundTag d, int mx, int my) {

@@ -14,7 +14,7 @@ import java.util.UUID;
 
 /**
  * Onglet Police (mod MineNorth Police, modid « minenorthpolice ») : faire entrer / sortir un joueur de la police, donner tablette et équipement.
- * Les grades ne se gèrent pas ici (tablette du Commissaire ou /police grade).
+ * Le grade se change aussi ici (police.grade), comme avec la tablette du Commissaire ou /police grade.
  * Passe par fr.minenorth.police.api.PoliceApi en réflexion : le panneau compile et démarre sans le mod Police.
  */
 final class PoliceModule {
@@ -53,8 +53,7 @@ final class PoliceModule {
     }
 
     /**
-     * Fiche : le joueur est-il policier, et la liste des effectifs (noms RP). Le grade est affiché pour info :
-     * il se gère dans la tablette (Commissaire) ou avec /police grade, pas dans le panneau.
+     * Fiche : le joueur est-il policier (et à quel grade), la liste des grades et celle des effectifs (noms RP).
      */
     static CompoundTag view(MinecraftServer s, UUID id) {
         CompoundTag t = new CompoundTag();
@@ -62,6 +61,10 @@ final class PoliceModule {
         int grade = grade(s, id);
         t.putBoolean("Police", grade >= 0);
         t.putString("Grade", grade >= 0 && grade < g.length ? g[grade] : "");
+        t.putInt("GradeIdx", grade);
+        ListTag names = new ListTag();
+        for (String n : g) names.add(net.minecraft.nbt.StringTag.valueOf(n));
+        t.put("Grades", names);
         record Row(String name, int grade, boolean on) {}
         List<Row> rows = new ArrayList<>();
         for (Map.Entry<UUID, Integer> e : officers(s).entrySet()) {
@@ -92,7 +95,7 @@ final class PoliceModule {
         }
     }
 
-    /** police.add (entre dans la police au grade le plus bas), police.remove, police.tablet, police.kit. */
+    /** police.add (entre dans la police au grade le plus bas), police.grade (n = grade), police.remove, police.tablet, police.kit. */
     static Result act(ServerPlayer actor, UUID id, String action, long n) {
         MinecraftServer s = actor.server;
         String name = Players.display(s, id);
@@ -104,6 +107,15 @@ final class PoliceModule {
                 // Pseudo transmis au mod Police (fichier des citoyens) ; il affiche lui-même le nom RP.
                 setGrade(s, id, Players.name(s, id), g.length - 1);
                 return Result.ok(name + " fait maintenant partie de la police (" + g[g.length - 1] + ").", "ajouté à la police");
+            }
+            case "police.grade" -> {
+                String[] g = grades();
+                if (n < 0 || n >= g.length) return Result.fail("Grade inconnu.");
+                if (!police) return Result.fail(name + " n'est pas policier.");
+                int current = grade(s, id);
+                if (current == n) return Result.fail(name + " est déjà " + g[(int) n] + ".");
+                setGrade(s, id, Players.name(s, id), (int) n);
+                return Result.ok(name + " passe " + g[(int) n] + ".", "change le grade de police : " + g[current] + " -> " + g[(int) n]);
             }
             case "police.remove" -> {
                 if (!police) return Result.fail(name + " ne fait pas partie de la police.");

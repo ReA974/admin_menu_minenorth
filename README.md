@@ -20,12 +20,14 @@ ou le pseudo.
   - Permis : donner (durée en jours, vide = config, 0 = permanent), retirer, nouvelle carte, points, effacer les délais d'examen.
   - Garage : garage et fourrière ; supprimer, libérer de la fourrière, transférer à un autre joueur.
   - Police (si MineNorth Police est installé) : faire entrer un joueur dans la police (au grade le plus bas) ou l'en retirer,
-    hors ligne aussi, et lui donner la tablette ou l'équipement (connecté). Les grades ne se gèrent pas ici :
-    tablette du Commissaire ou `/police grade`. Permissions « Police : voir » et « Police : ajouter / retirer ».
+    hors ligne aussi, changer son grade, et lui donner la tablette ou l'équipement (connecté).
+    Permissions « Police : voir » et « Police : ajouter / retirer / grades ».
   - Pompiers (si MineNorth Secours est installé) : nommer un joueur pompier (choix du grade : Chef des secours, Médecin, Secouriste),
     changer son grade, le retirer (hors ligne aussi) et lui donner la tablette (connecté). Permissions « Pompiers : voir » et
     « Pompiers : nommer / grades ». Nécessite le mod Secours à jour (nouvelle API `SecoursApi`).
   - Inventaire + ender chest : copier, prendre, supprimer, tout vider, donner l'objet en main. Hors ligne : modifie le fichier `playerdata`.
+- **État** (onglet en haut, si MineNorth État est installé) : solde du trésor, impôt sur les achats (fixer ou revenir à la valeur de la config),
+  maire (nommer / retirer), ouvrir / clôturer / annuler une élection. Permissions « État : voir » et « État : impôt / maire / élections ».
 - **Supprimer un joueur** (bouton rouge dans sa fiche, double clic, joueur déconnecté) : efface TOUTES ses données —
   fichiers du monde (inventaire, ender chest, position, succès, stats), compte bancaire et prêts, permis, garage et
   fourrière, grade police, rôle staff. S'il revient, il repart de zéro. Permission « Supprimer un joueur » (propriétaire et Gérant par défaut).

@@ -120,6 +120,16 @@ public class StaffData extends SavedData {
             for (Role r : d.roles.values()) if (r.perms.contains(Perm.STAFF)) r.perms.add(Perm.MAP_PLAYERS);
             d.setDirty();
         }
+        // migration : permissions État données une fois aux rôles qui gèrent le staff (Gérant)
+        if (!tag.getBoolean("MigrEtat")) {
+            for (Role r : d.roles.values()) {
+                if (r.perms.contains(Perm.STAFF)) {
+                    r.perms.add(Perm.ETAT_VIEW);
+                    r.perms.add(Perm.ETAT_EDIT);
+                }
+            }
+            d.setDirty();
+        }
         // migration : permissions Pompiers données une fois aux rôles qui avaient déjà les droits Police correspondants
         if (!tag.getBoolean("MigrSecours")) {
             for (Role r : d.roles.values()) {
@@ -136,6 +146,7 @@ public class StaffData extends SavedData {
         tag.putInt("NextRole", nextRole);
         tag.putBoolean("MigrMapPlayers", true);
         tag.putBoolean("MigrSecours", true);
+        tag.putBoolean("MigrEtat", true);
         ListTag rl = new ListTag();
         for (Role r : roles.values()) rl.add(r.save());
         tag.put("Roles", rl);
