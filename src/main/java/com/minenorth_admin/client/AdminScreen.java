@@ -725,18 +725,48 @@ public class AdminScreen extends Screen {
 
     // ================================================================== état
 
+    /** 0 = général (impôt, maire, élection), 1 = trésor (solde, journal, suspension du maire), 2 = salaires, 3 = agents. */
+    private int etatPage;
+    private String etatSel = "";
+
+    private static String eur(double v) {
+        long cents = Math.round(v * 100.0);
+        long a = Math.abs(cents);
+        return (cents < 0 ? "-" : "") + (a / 100) + (a % 100 == 0 ? "" : "," + String.format("%02d", a % 100)) + " €";
+    }
+
     private void initEtat() {
+        String[] pages = {"Général", "Trésor", "Salaires", "Agents"};
+        for (int i = 0; i < pages.length; i++) {
+            int idx = i;
+            btn(8 + i * 64, 34, 60, 13, pages[i], Btn.DARK, () -> {
+                etatPage = idx;
+                etatSel = "";
+                confirm = "";
+                rebuildWidgets();
+            }).selected(etatPage == i);
+        }
         boolean edit = has("ETAT_EDIT");
-        boolean electionOn = etat != null && etat.getBoolean("Election");
-        box("etatTax", 8, 98, 80, "% (ex. 2,5)", 8);
-        btn(94, 97, 110, 16, "Fixer l'impôt", Btn.GREEN, () -> send("etat.tax", null, in("etatTax"), "", 0)).enabled(edit && !in("etatTax").isEmpty());
-        btn(208, 97, 120, 16, "Valeur de la config", Btn.DARK, () -> send("etat.taxreset")).enabled(edit);
-        box("etatMayor", 8, 134, 150, "Pseudo ou nom RP", 32);
-        btn(162, 133, 100, 16, "Nommer maire", Btn.GREEN, () -> send("etat.mayor", null, in("etatMayor"), "", 0)).enabled(edit && !in("etatMayor").isEmpty());
-        btn(266, 133, 120, 16, "Retirer le maire", Btn.RED, () -> confirmThen("nomayor", () -> send("etat.nomayor")))
-                .enabled(edit && etat != null && !etat.getString("Mayor").isEmpty()).selected(confirm.equals("nomayor"));
-        box("etatMin", 8, 170, 80, "minutes (vide = config)", 6);
-        btn(94, 169, 70, 16, "Ouvrir", Btn.GREEN, () -> {
+        if (etat == null) return;
+        switch (etatPage) {
+            case 0 -> initEtatGeneral(edit);
+            case 1 -> initEtatTreasury(edit);
+            case 2 -> initEtatSalaries(edit);
+            default -> initEtatAgents(edit);
+        }
+    }
+
+    private void initEtatGeneral(boolean edit) {
+        boolean electionOn = etat.getBoolean("Election");
+        box("etatTax", 8, 112, 80, "% (ex. 2,5)", 8);
+        btn(94, 111, 110, 16, "Fixer l'impôt", Btn.GREEN, () -> send("etat.tax", null, in("etatTax"), "", 0)).enabled(edit && !in("etatTax").isEmpty());
+        btn(208, 111, 120, 16, "Valeur de la config", Btn.DARK, () -> send("etat.taxreset")).enabled(edit);
+        box("etatMayor", 8, 148, 150, "Pseudo ou nom RP", 32);
+        btn(162, 147, 100, 16, "Nommer maire", Btn.GREEN, () -> send("etat.mayor", null, in("etatMayor"), "", 0)).enabled(edit && !in("etatMayor").isEmpty());
+        btn(266, 147, 120, 16, "Retirer le maire", Btn.RED, () -> confirmThen("nomayor", () -> send("etat.nomayor")))
+                .enabled(edit && !etat.getString("Mayor").isEmpty()).selected(confirm.equals("nomayor"));
+        box("etatMin", 8, 184, 80, "minutes (vide = config)", 6);
+        btn(94, 183, 70, 16, "Ouvrir", Btn.GREEN, () -> {
             String v = in("etatMin");
             long min = 0;
             try {
@@ -748,9 +778,48 @@ public class AdminScreen extends Screen {
             }
             send("etat.open", null, "", "", min);
         }).enabled(edit && !electionOn);
-        btn(168, 169, 70, 16, "Clôturer", Btn.DARK, () -> send("etat.close")).enabled(edit && electionOn);
-        btn(242, 169, 70, 16, "Annuler", Btn.RED, () -> confirmThen("elcancel", () -> send("etat.cancel")))
+        btn(168, 183, 70, 16, "Clôturer", Btn.DARK, () -> send("etat.close")).enabled(edit && electionOn);
+        btn(242, 183, 70, 16, "Annuler", Btn.RED, () -> confirmThen("elcancel", () -> send("etat.cancel")))
                 .enabled(edit && electionOn).selected(confirm.equals("elcancel"));
+    }
+
+    private void initEtatTreasury(boolean edit) {
+        boolean locked = etat.getBoolean("Locked");
+        box("etatCash", 8, 82, 120, "± euros (500 ou -200)", 12);
+        btn(132, 81, 80, 16, "Appliquer", Btn.GREEN, () -> send("etat.treasury", null, in("etatCash"), "", 0)).enabled(edit && !in("etatCash").isEmpty());
+        btn(222, 81, 164, 16, locked ? "Rétablir les pouvoirs du maire" : "Suspendre les pouvoirs du maire", locked ? Btn.GREEN : Btn.RED,
+                () -> send("etat.lock", null, "", "", locked ? 0 : 1)).enabled(edit && !etat.getString("Mayor").isEmpty());
+    }
+
+    private void initEtatSalaries(boolean edit) {
+        ListTag rows = etat.getList("Salaries", Tag.TAG_COMPOUND);
+        for (int i = 0; i < Math.min(9, rows.size()); i++) {
+            CompoundTag r = rows.getCompound(i);
+            String key = r.getString("Key");
+            btn(8, 52 + i * 14, 384, 13, r.getString("Label") + "  ·  " + eur(r.getDouble("Euros")) + (r.getBoolean("Set") ? "  (modifié en jeu)" : "  (config)"),
+                    Btn.DARK, () -> {
+                        etatSel = key;
+                        rebuildWidgets();
+                    }).selected(key.equals(etatSel));
+        }
+        box("etatSal", 8, 186, 90, "€ par paie", 10);
+        btn(102, 185, 80, 16, "Fixer", Btn.GREEN, () -> send("etat.salary", null, in("etatSal"), etatSel, 1))
+                .enabled(edit && !etatSel.isEmpty() && !in("etatSal").isEmpty());
+        btn(186, 185, 130, 16, "Valeur de la config", Btn.DARK, () -> send("etat.salaryreset", null, etatSel, "", 0)).enabled(edit && !etatSel.isEmpty());
+    }
+
+    private void initEtatAgents(boolean edit) {
+        ListTag rows = etat.getList("AgentList", Tag.TAG_COMPOUND);
+        for (int i = 0; i < Math.min(10, rows.size()); i++) {
+            CompoundTag r = rows.getCompound(i);
+            String id = r.getString("Id");
+            btn(8, 52 + i * 14, 384, 13, r.getString("Name") + "  ·  " + r.getString("Title"), Btn.DARK, () -> {
+                etatSel = id;
+                rebuildWidgets();
+            }).selected(id.equals(etatSel));
+        }
+        btn(8, 206, 150, 16, "Révoquer l'agent", Btn.RED, () -> confirmThen("revoke", () -> send("etat.revoke", null, etatSel, "", 0)))
+                .enabled(edit && !etatSel.isEmpty()).selected(confirm.equals("revoke"));
     }
 
     private static String num(double v) {
@@ -760,19 +829,37 @@ public class AdminScreen extends Screen {
 
     private void renderEtat(GuiGraphics g) {
         if (etat == null) {
-            text(g, "Chargement…", 8, 40, DIM);
+            text(g, "Chargement…", 8, 54, DIM);
             return;
         }
-        long bal = etat.getLong("Balance");
-        text(g, "Trésor : " + (bal / 100) + (bal % 100 == 0 ? "" : "," + String.format("%02d", Math.abs(bal % 100))) + " €", 8, 40, WHITE);
-        text(g, "Impôt sur chaque achat : " + num(etat.getDouble("Tax")) + " %  (plafond du maire : " + num(etat.getDouble("TaxMax")) + " %)", 8, 52, TEXT);
         String mayor = etat.getString("Mayor");
-        text(g, mayor.isEmpty() ? "Maire : personne" : "Maire : " + mayor, 8, 64, mayor.isEmpty() ? DIM : OK);
-        text(g, "Élection : " + (etat.getBoolean("Election") ? "en cours" : "aucune") + " · Agents municipaux : " + etat.getInt("Agents"), 8, 76, DIM);
-        text(g, "Impôt (part de chaque achat versée au trésor)", 8, 88, DIM);
-        text(g, "Maire (remplace l'actuel, ses agents sont révoqués)", 8, 124, DIM);
-        text(g, "Élection (durée en minutes)", 8, 160, DIM);
-        if (!has("ETAT_EDIT")) text(g, "Lecture seule (pas de droit de modification).", 8, 196, DIM);
+        switch (etatPage) {
+            case 0 -> {
+                text(g, "Trésor : " + eur(etat.getLong("Balance") / 100.0), 8, 54, WHITE);
+                text(g, "Impôt sur chaque achat : " + num(etat.getDouble("Tax")) + " %  (plafond du maire : " + num(etat.getDouble("TaxMax")) + " %)", 8, 65, TEXT);
+                text(g, mayor.isEmpty() ? "Maire : personne" : "Maire : " + mayor + (etat.getBoolean("Locked") ? "  (pouvoirs suspendus)" : ""), 8, 76, mayor.isEmpty() ? DIM : OK);
+                text(g, "Élection : " + (etat.getBoolean("Election") ? "en cours" : "aucune") + " · Agents municipaux : " + etat.getInt("Agents"), 8, 87, DIM);
+                text(g, "Impôt (part de chaque achat versée au trésor)", 8, 101, DIM);
+                text(g, "Maire (remplace l'actuel, ses agents sont révoqués)", 8, 137, DIM);
+                text(g, "Élection (durée en minutes)", 8, 173, DIM);
+                if (!has("ETAT_EDIT")) text(g, "Lecture seule (pas de droit de modification).", 8, 208, DIM);
+            }
+            case 1 -> {
+                text(g, "Solde du trésor : " + eur(etat.getLong("Balance") / 100.0), 8, 54, WHITE);
+                text(g, etat.getBoolean("Locked") ? "Pouvoirs du maire : SUSPENDUS" : "Pouvoirs du maire : actifs", 8, 66, etat.getBoolean("Locked") ? BAD : OK);
+                ListTag led = etat.getList("Ledger", Tag.TAG_STRING);
+                text(g, "Dernières opérations (" + led.size() + ")", 8, 104, DIM);
+                for (int i = 0; i < Math.min(10, led.size()); i++) textFit(g, led.getString(i), 8, 116 + i * 11, 384, TEXT);
+                if (led.isEmpty()) text(g, "Aucune opération pour le moment.", 8, 116, DIM);
+            }
+            case 2 -> {
+                text(g, "Clique un poste puis fixe son salaire (par paie, sans plafond pour toi).", 8, 40 + 0, DIM);
+            }
+            default -> {
+                if (etat.getList("AgentList", Tag.TAG_COMPOUND).isEmpty()) text(g, "Aucun agent municipal.", 8, 56, DIM);
+                else text(g, "Clique un agent pour le sélectionner.", 8, 40, DIM);
+            }
+        }
     }
 
     // ================================================================== journal

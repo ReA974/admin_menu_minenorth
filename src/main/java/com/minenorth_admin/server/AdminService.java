@@ -426,7 +426,7 @@ public final class AdminService {
 
     private static Result etatAction(ServerPlayer actor, Access acc, Req m) {
         if (!acc.has(Perm.ETAT_EDIT)) return Result.fail("Tu n'as pas la permission : " + Perm.ETAT_EDIT.label + ".");
-        Result r = EtatModule.act(actor, m.action(), m.a(), m.n());
+        Result r = EtatModule.act(actor, m.action(), m.a(), m.b(), m.n());
         if (r.ok() && r.log() != null) AuditLog.log(actor, "", "état", r.log());
         return r;
     }
