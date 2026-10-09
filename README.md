@@ -43,3 +43,9 @@ ou le pseudo.
 ## Config
 `world/serverconfig/minenorth_admin-server.toml` : niveau d'op propriétaire, taille du journal, fichier de log,
 prévenir le joueur quand le staff modifie sa banque / ses permis.
+
+## Licence
+
+**Tous droits réservés - MineNorthRP.** Réutilisation, copie, modification, décompilation / ingénierie
+inverse (y compris par outils d'intelligence artificielle) et utilisation pour entraîner une IA sont
+**interdites** sans autorisation écrite. Voir [LICENSE](LICENSE).
